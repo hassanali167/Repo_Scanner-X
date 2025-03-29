@@ -24,6 +24,7 @@ def verify_github_repo(repo_url, oauth_token=None):
         return f"⚠️ Error: {response.status_code} - {response.json().get('message', 'Unknown error')}"
 
 
+
 def execute_commands(commands):
     output_log = []
     current_directory = os.getcwd()
