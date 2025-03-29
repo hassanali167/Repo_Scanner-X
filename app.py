@@ -11,6 +11,7 @@ def verify_github_repo(repo_url, oauth_token=None):
 
     response = requests.get(repo_api_url, headers=headers)
 
+
     if response.status_code == 200:
         return "✅ Repository is accessible."
     elif response.status_code == 404:
@@ -21,6 +22,7 @@ def verify_github_repo(repo_url, oauth_token=None):
         return "🔒 Access Denied! You may have exceeded GitHub API rate limits."
     else:
         return f"⚠️ Error: {response.status_code} - {response.json().get('message', 'Unknown error')}"
+
 
 def process_input(project_name, repo_url, oauth_token, commands, uploaded_file, scanners):
     """Handles user input, verifies GitHub repo, and prepares for scanning & deployment."""
