@@ -37,7 +37,7 @@ def process_input(project_name, repo_url, oauth_token, scanners):
 
 # UI Components
 with gr.Blocks() as ui:
-    gr.Markdown("# 🔒 Secure Deployment Tool with GitHub Verification")
+    gr.Markdown("# 🛡️ Git Vulnerability Scanner & AI Based Recommendation System")
     
     with gr.Row():
         project_name = gr.Textbox(label="Project Name", placeholder="Enter project name")
