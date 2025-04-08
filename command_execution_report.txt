@@ -1,26 +1,8 @@
-📝 Project: abc
-🔗 Repo: https://github.com/hassanali167/scd_lab_9_task
+📝 Project: Test
+🔗 Repo: https://github.com/hassanali167/hassanali_portfolio
 ✅ Repository is accessible.
 
 🚀 Executing Commands...
-📂 Changed directory to: /home/friends/Desktop/
-✅ git clone https://github.com/hassanali167/scd_lab_9_task.git
 
-✅ ls
-Course Registration-abdullah.pdf
-Cyber Security Project Proposal.docx
-Devops
-FALL-2024 Transcript.pdf
-arduino-ide.desktop
-change mac address
-command.txt
-commands.txt
-complete project
-docker commands
-hassan_ali_se_blue_cyber_assignment_1.docx
-proxmox.txt
-scd_lab_9_task
-tool.txt
-wifi and ieee.docx
 
 🔎 Selected Scanners: 
