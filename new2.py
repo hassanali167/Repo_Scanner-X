@@ -1,9 +1,12 @@
 import gradio as gr
 import requests
 import subprocess
-import os
-import shutil
 import tempfile
+import shutil
+import os
+
+# --- Configuration ---
+PASSWORD = "hacker"
 
 def verify_github_repo(repo_url, oauth_token=None):
     if not repo_url.startswith("https://github.com/"):
@@ -11,6 +14,7 @@ def verify_github_repo(repo_url, oauth_token=None):
     
     repo_api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
     headers = {"Authorization": f"token {oauth_token}"} if oauth_token else {}
+
     response = requests.get(repo_api_url, headers=headers)
     
     if response.status_code == 200:
@@ -24,34 +28,27 @@ def verify_github_repo(repo_url, oauth_token=None):
     else:
         return f"⚠️ Error: {response.status_code} - {response.json().get('message', 'Unknown error')}"
 
-def clone_repo(repo_url, token=None):
-    tmp_dir = tempfile.mkdtemp()
-    clone_url = repo_url
-    if token:
-        clone_url = repo_url.replace("https://", f"https://{token}@")
-    
-    result = subprocess.run(f"git clone {clone_url} {tmp_dir}", shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        shutil.rmtree(tmp_dir)
-        return None, f"❌ Failed to clone repository: {result.stderr.strip()}"
-    return tmp_dir, ""
-
-def run_scanner(scanner, local_path, repo_name):
+def run_scanner(scanner, local_path):
     report = ""
-    
+    base_command = f"echo {PASSWORD} | sudo -S "
+
     if scanner == "Trivy":
-        command = f"docker run --rm -v {local_path}:/repo aquasec/trivy fs /repo"
+        command = f"{base_command}docker run --rm -v {local_path}:/repo aquasec/trivy fs /repo"
     elif scanner == "SonarQube":
-        project_key = repo_name.replace("/", "_").lower()
+        sonar_token = os.getenv("SONAR_TOKEN", "your-sonarqube-token")
         command = (
-            f"docker run --rm -v {local_path}:/usr/src sonarsource/sonar-scanner-cli "
-            f"-Dsonar.projectKey={project_key} -Dsonar.sources=/usr/src -Dsonar.host.url=http://localhost:9000 "
-            f"-Dsonar.login=admin -Dsonar.password=admin"
+            f"{base_command}docker run --rm "
+            f"-e SONAR_HOST_URL='http://localhost:9000' "
+            f"-e SONAR_LOGIN={sonar_token} "
+            f"-v {local_path}:/usr/src "
+            f"sonarsource/sonar-scanner-cli"
         )
     elif scanner == "OWASP Dependency-Track":
-        command = f"echo 'Simulated OWASP Dependency-Track scan for {local_path}'"
+        # Simulate OWASP scan (no official Docker CLI – integration is done via APIs usually)
+        report += f"✅ OWASP Dependency-Track Scan completed successfully.\nSimulated OWASP Dependency-Track scan for {local_path}"
+        return report
     else:
-        return "❌ Unknown scanner selected."
+        return "⚠️ Unknown scanner selected."
 
     process = subprocess.run(command, shell=True, capture_output=True, text=True)
     if process.returncode == 0:
@@ -68,45 +65,55 @@ def process_input(project_name, repo_url, oauth_token, scanners):
 
     full_report = f"📝 Project: {project_name}\n🔗 Repo: {repo_url}\n{repo_status}\n\n"
     
-    local_path, clone_error = clone_repo(repo_url, oauth_token)
-    if clone_error:
-        return clone_error, ""
-
+    # Clone GitHub repo into temp directory
+    temp_dir = tempfile.mkdtemp()
     try:
-        repo_name = repo_url.split("github.com/")[-1].replace(".git", "")
+        clone_command = f"git clone {repo_url} {temp_dir}"
+        subprocess.run(clone_command, shell=True, check=True)
         
         for scanner in scanners:
             full_report += f"\n--- {scanner} Scan ---\n"
-            full_report += run_scanner(scanner, local_path, repo_name)
+            full_report += run_scanner(scanner, temp_dir)
+
+    except subprocess.CalledProcessError as e:
+        full_report += f"❌ Failed to clone repository: {e}\n"
     finally:
-        shutil.rmtree(local_path)
+        shutil.rmtree(temp_dir)
 
+    # Save report
     report_path = "vulnerability_report.txt"
-    with open(report_path, "w") as f:
-        f.write(full_report)
-
+    with open(report_path, "w") as report_file:
+        report_file.write(full_report)
+    
     return full_report, report_path
 
-# Gradio UI
+# UI
 with gr.Blocks() as ui:
-    gr.Markdown("# 🔐 GitHub Vulnerability Scanner")
+    gr.Markdown("# 🔒 Vulnerability Scanner Tool")
     
     with gr.Row():
         project_name = gr.Textbox(label="Project Name", placeholder="Enter project name")
-        repo_url = gr.Textbox(label="GitHub Repository URL", placeholder="https://github.com/user/repo.git")
+        repo_url = gr.Textbox(label="GitHub Repository URL", placeholder="https://github.com/user/repo")
     
     oauth_token = gr.Textbox(label="OAuth Token (if private)", placeholder="Enter GitHub OAuth Token", type="password")
-
+    
     verify_button = gr.Button("🔍 Verify Repository")
     repo_status_output = gr.Textbox(label="Repository Status", interactive=False)
-
-    scanners = gr.CheckboxGroup(["Trivy", "SonarQube", "OWASP Dependency-Track"], label="Select Scanners")
-
+    
+    scanners = gr.CheckboxGroup(
+        ["Trivy", "SonarQube", "OWASP Dependency-Track"],
+        label="Select Scanners",
+        info="Choose one or more security scanners."
+    )
+    
     scan_button = gr.Button("🚀 Run Scan")
-    output = gr.Textbox(label="Scan Output", lines=20, interactive=False)
+    output = gr.Textbox(label="Scan Output", interactive=False)
+    
     download_button = gr.File(label="Download Report", interactive=False)
-
+    
     verify_button.click(verify_github_repo, inputs=[repo_url, oauth_token], outputs=repo_status_output)
-    scan_button.click(process_input, inputs=[project_name, repo_url, oauth_token, scanners], outputs=[output, download_button])
+    scan_button.click(process_input, 
+                      inputs=[project_name, repo_url, oauth_token, scanners], 
+                      outputs=[output, download_button])
 
 ui.launch()
