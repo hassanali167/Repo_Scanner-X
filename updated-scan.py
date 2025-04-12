@@ -5,6 +5,7 @@ import tempfile
 import re
 import shutil
 
+
 def get_repo_name(repo_url):
     repo_name_match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
     return repo_name_match.group(1) if repo_name_match else "scanned_repo"
