@@ -95,7 +95,6 @@ def run_scan_interface(project_name, repo_url, oauth_token):
 
 # ------------------- Gradio UI -------------------
 
-
 with gr.Blocks() as ui:
     gr.Markdown("# 🛡️ Git Vulnerability Scanner & AI Based Recommendation System")
 
