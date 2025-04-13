@@ -7,150 +7,189 @@ import re
 import shutil
 import uuid
 import json
+import datetime
 
-# ------------------- GLOBAL CONFIG -------------------
+# ------------------- CONFIG -------------------
 SCAN_HISTORY = {}
+PROJECT_TITLE = "Repo Scanner-X"
+HEADING = "# 📈 Git Vulnerability Scanner and AI-based Recommendation System"
 GROQ_API_KEY = "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"
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama3-70b-8192"
 
-# ------------------- GitHub Utilities -------------------
+# ------------------- Repo Utilities -------------------
+def get_repo_name(repo_url):
+    match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
+    return match.group(1) if match else "scanned_repo"
+
 def verify_github_repo(repo_url, oauth_token=None):
     if not repo_url.startswith("https://github.com/"):
-        return "❌ Invalid GitHub URL. Please enter a valid GitHub repository URL."
+        return "❌ Invalid GitHub URL. Use: https://github.com/user/repo"
 
-    repo_api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
     headers = {"Authorization": f"token {oauth_token}"} if oauth_token else {}
-
-    response = requests.get(repo_api_url, headers=headers)
+    response = requests.get(repo_url.replace("https://github.com/", "https://api.github.com/repos/"), headers=headers)
 
     if response.status_code == 200:
-        return "✅ Repository is accessible."
+        return "✅ Repository accessible!"
     elif response.status_code == 404:
-        return "❌ Repository not found. Check the URL."
-    elif response.status_code == 401:
-        return "🔑 Unauthorized! Check your OAuth token permissions."
+        return "❌ Repo not found!"
     elif response.status_code == 403:
-        return "🔒 Access Denied! You may have exceeded GitHub API rate limits."
-    else:
-        return f"⚠️ Error: {response.status_code} - {response.json().get('message', 'Unknown error')}"
-
-# ------------------- Trivy Scan Logic -------------------
-def get_repo_name(repo_url):
-    repo_name_match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
-    return repo_name_match.group(1) if repo_name_match else "scanned_repo"
+        return "⛔️ Access denied or API rate limit exceeded."
+    elif response.status_code == 401:
+        return "🔐 Unauthorized: Invalid token?"
+    return f"⚠️ Unexpected error: {response.status_code}"
 
 def clone_repository(repo_url, token=None):
     if token:
-        if repo_url.startswith("https://github.com/"):
-            repo_url = repo_url.replace("https://", f"https://{token}@")
-        else:
-            raise ValueError("Only HTTPS URLs are supported for private repositories with token.")
+        repo_url = repo_url.replace("https://", f"https://{token}@")
 
     temp_dir = tempfile.mkdtemp()
-    result = subprocess.run(["git", "clone", repo_url], cwd=temp_dir, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Git clone failed:\n{result.stderr}")
-
+    subprocess.run(["git", "clone", repo_url], cwd=temp_dir, capture_output=True, text=True, check=True)
     repo_name = get_repo_name(repo_url)
-    repo_path = os.path.join(temp_dir, repo_name)
-    return repo_path, repo_name, temp_dir
+    return os.path.join(temp_dir, repo_name), repo_name, temp_dir
 
+# ------------------- Trivy Scanner -------------------
 def scan_with_trivy(repo_path):
-    command = [
+    cmd = [
         "trivy", "fs",
         "--scanners", "vuln,secret,config,license",
         "--quiet",
         "--format", "table",
         repo_path
     ]
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode not in [0, 5]:
-        raise RuntimeError(f"Trivy scan failed:\n{result.stderr}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode not in [0, 5]:  # 5 means vulnerabilities found
+        raise RuntimeError(result.stderr)
     return result.stdout
 
-def save_scan_report(repo_name, report_data):
-    filename = f"{repo_name}_{uuid.uuid4().hex[:8]}_scan.txt"
+def extract_vulnerable_files(scan_output):
+    return sorted(set(re.findall(r"(/.*?):", scan_output)))
+
+def save_report(repo_name, content, suffix):
+    filename = f"{repo_name}_{uuid.uuid4().hex[:6]}_{suffix}"
     with open(filename, "w") as f:
-        f.write(report_data)
+        f.write(content)
     return filename
 
-# ------------------- Groq AI Integration -------------------
-def analyze_with_ai(report_data):
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    prompt = f"""You are a cybersecurity expert. Analyze the following vulnerability report and:
-- Identify the most critical vulnerabilities
-- Suggest recommendations to fix them
-- Mention any known exploits or attack techniques related to them
+# ------------------- AI ANALYSIS -------------------
+def analyze_with_ai(scan_report, repo_url, repo_name, repo_meta):
+    vulnerable_files = extract_vulnerable_files(scan_report)
+    file_list = "\n".join(f"- `{file}`" for file in vulnerable_files)
 
-Report:
-{report_data}
+    prompt = f"""
+You are a cybersecurity assistant. Read this vulnerability scan and respond **professionally**.
+Skip introductions like \"As an AI expert...\" and jump straight to the point.
+
+✨ GitHub Repository Metadata:
+- Repo Name: {repo_name}
+- URL: {repo_url}
+- Created: {repo_meta.get('created_at')}
+- Updated: {repo_meta.get('updated_at')}
+- Stars: {repo_meta.get('stargazers_count')}
+- Forks: {repo_meta.get('forks_count')}
+- Language: {repo_meta.get('language')}
+- Owner: {repo_meta.get('owner', {}).get('login')}
+
+☑️ Files with vulnerabilities:
+{file_list}
+
+⏰ Scan:
+{scan_report}
+
+Respond with:
+1. ⚡ Top 3 Critical Vulnerabilities
+2. 🛠️ Remediation Steps
+3. 🧠 Known Exploits / Attack Techniques
 """
+
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     data = {
         "model": GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": "You are a cybersecurity assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.2
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3
     }
 
-    response = requests.post(GROQ_ENDPOINT, headers=headers, data=json.dumps(data))
+    response = requests.post(GROQ_ENDPOINT, headers=headers, json=data)
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
 
-# ------------------- Main Scan Function -------------------
-def run_scan_interface(project_name, repo_url, oauth_token):
-    status_msg = verify_github_repo(repo_url, oauth_token)
-    if "❌" in status_msg or "🔒" in status_msg or "🔑" in status_msg:
-        return status_msg, None, "", ""
+def fetch_repo_metadata(repo_url, token=None):
+    headers = {"Authorization": f"token {token}"} if token else {}
+    api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
+    return requests.get(api_url, headers=headers).json()
+
+# ------------------- Main Function -------------------
+def run_scan(project_name, repo_url, token):
+    status = verify_github_repo(repo_url, token)
+    if "❌" in status or "⛔" in status or "🔐" in status:
+        return status, None, None, "", "", ""
 
     try:
-        repo_path, repo_name, temp_dir = clone_repository(repo_url, oauth_token)
-        scan_result = scan_with_trivy(repo_path)
-        report_file = save_scan_report(repo_name, scan_result)
-        ai_response = analyze_with_ai(scan_result)
+        repo_meta = fetch_repo_metadata(repo_url, token)
+        repo_path, repo_name, temp_dir = clone_repository(repo_url, token)
+        scan_data = scan_with_trivy(repo_path)
 
-        # Count this scan
+        header = (
+            f"\n\n✨ GitHub Repository Metadata:\n"
+            f"- Repo Name: {repo_name}\n"
+            f"- URL: {repo_url}\n"
+            f"- Created: {repo_meta.get('created_at')}\n"
+            f"- Updated: {repo_meta.get('updated_at')}\n"
+            f"- Stars: {repo_meta.get('stargazers_count')}\n"
+            f"- Forks: {repo_meta.get('forks_count')}\n"
+            f"- Language: {repo_meta.get('language')}\n"
+            f"- Owner: {repo_meta.get('owner', {}).get('login')}\n"
+            f"- Scan Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        )
+
+        trivy_report = header + scan_data
+        ai_recommendation = analyze_with_ai(scan_data, repo_url, repo_name, repo_meta)
+        ai_report = header + ai_recommendation
+
+        trivy_file = save_report(repo_name, trivy_report, "trivy.txt")
+        ai_file = save_report(repo_name, ai_report, "ai.md")
+
         SCAN_HISTORY[project_name] = SCAN_HISTORY.get(project_name, 0) + 1
 
-        return (
-            f"✅ Scan completed for **{project_name}**\n🔗 Repo: {repo_url}\n📦 Trivy scan saved.\n🧠 AI Analysis generated.",
-            report_file,
-            ai_response,
-            f"📊 Total scans for this project: {SCAN_HISTORY[project_name]}"
-        )
+        return f"✅ Scan + AI Analysis Complete", trivy_file, ai_file, trivy_report, ai_recommendation, f"📊 Scans: {SCAN_HISTORY[project_name]}"
     except Exception as e:
-        return f"[!] Error during scan: {str(e)}", None, "", ""
+        return f"❌ Error: {e}", None, None, "", "", ""
     finally:
         if 'temp_dir' in locals() and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
 # ------------------- Gradio UI -------------------
-with gr.Blocks() as ui:
-    gr.Markdown("# 🛡️ Git Vulnerability Scanner + 🧠 AI Advisor")
+with gr.Blocks(theme=gr.themes.Soft()) as ui:
+    gr.Markdown(HEADING)
 
     with gr.Row():
-        project_name = gr.Textbox(label="Project Name", placeholder="Enter project name")
-        repo_url = gr.Textbox(label="GitHub Repository URL", placeholder="https://github.com/user/repo.git")
-    oauth_token = gr.Textbox(label="OAuth Token (if private)", placeholder="GitHub token", type="password")
+        project_name = gr.Textbox(label="Project Name", placeholder="e.g., MyApp-V1")
+        repo_url = gr.Textbox(label="GitHub Repo URL", placeholder="https://github.com/user/repo.git")
+    token = gr.Textbox(label="OAuth Token (Optional)", type="password")
 
-    verify_button = gr.Button("🔍 Verify Repository")
-    repo_status_output = gr.Textbox(label="Repository Status", interactive=False)
+    verify_btn = gr.Button("🔍 Verify Repo", variant="secondary")
+    repo_status = gr.Textbox(label="Repository Status", interactive=False)
 
-    scan_button = gr.Button("🛠️ Run Scan & Analyze")
-    output_msg = gr.Textbox(label="Scan Status", interactive=False, lines=3)
-    download_report = gr.File(label="Download Trivy Report", interactive=False)
-    ai_output = gr.Textbox(label="🧠 AI Recommendations", lines=10)
-    scan_count = gr.Textbox(label="Scan History", interactive=False)
+    scan_btn = gr.Button("🛠️ Run Scan + AI Recommendation", variant="primary")
+    output_msg = gr.Textbox(label="Status")
 
-    verify_button.click(verify_github_repo, inputs=[repo_url, oauth_token], outputs=repo_status_output)
+    gr.Markdown("### 📊 Trivy Scan Output")
+    trivy_text = gr.Textbox(label="Trivy Report (Raw)", lines=10, interactive=False)
 
-    scan_button.click(run_scan_interface,
-                      inputs=[project_name, repo_url, oauth_token],
-                      outputs=[output_msg, download_report, ai_output, scan_count])
+    gr.Markdown("### 🧠 AI Recommendation")
+    ai_text = gr.Textbox(label="AI Analysis", lines=10, interactive=False)
+
+    gr.Markdown("### 📁 Download Reports")
+    with gr.Row():
+        download_trivy = gr.File(label="📄 Download Trivy Report")
+        download_ai = gr.File(label="📄 Download AI Report")
+
+    scan_stats = gr.Textbox(label="Project Scan Stats", interactive=False)
+
+    verify_btn.click(verify_github_repo, inputs=[repo_url, token], outputs=repo_status)
+
+    scan_btn.click(run_scan,
+                   inputs=[project_name, repo_url, token],
+                   outputs=[output_msg, download_trivy, download_ai, trivy_text, ai_text, scan_stats])
 
 ui.launch()
