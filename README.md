@@ -122,5 +122,7 @@ MIT License © 2025 [Your Name or Organization]
 
 If you encounter any issues or have suggestions, feel free to open an issue or reach out to:
 
-📧 alihassanali119683@gmail.com  
-🔗 linkedin.com/in/hassanali202
+📧 alihassanali119683@gmail.com
+📧 su439178@gmail.com  
+🔗 [linkedin.com/in/hassanali202](https://www.linkedin.com/in/hassanali202/)
+🔗 [linkedin.com/in/safi-ullah-54464525b]([linkedin.com/in/safi-ullah-54464525b](https://www.linkedin.com/in/safi-ullah-54464525b/))
