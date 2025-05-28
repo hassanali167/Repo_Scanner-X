@@ -43,7 +43,7 @@ def verify_github_repo(repo_url, oauth_token=None):
         return "❌ Invalid GitHub URL. Use: https://github.com/user/repo or .git"
     if not is_valid_token(oauth_token):
         return "❌ Invalid GitHub token format."
-    headers = {"Authorization": f"token {oauth_token}"} if oauth_token else {}
+    headers = {"Authorization": f"token [MASKED]"} if oauth_token else {}
     response = requests.get(repo_url.replace("https://github.com/", "https://api.github.com/repos/"), headers=headers)
     if response.status_code == 200:
         return "✅ Repository accessible!"
@@ -62,14 +62,16 @@ def clone_repository(repo_url, token=None):
         raise ValueError("Invalid GitHub token format.")
     safe_url = repo_url
     if token:
-        # Insert token safely
+        # Insert token safely (do not log or print the token)
         safe_url = repo_url.replace("https://", f"https://{token}@")
     temp_dir = tempfile.mkdtemp()
     try:
         subprocess.run(["git", "clone", safe_url], cwd=temp_dir, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        raise RuntimeError(f"Git clone failed: {e.stderr}")
+        # Mask any token in error output
+        err = e.stderr.replace(token, '[MASKED]') if token else e.stderr
+        raise RuntimeError(f"Git clone failed: {err}")
     repo_name = get_repo_name(repo_url)
     return os.path.join(temp_dir, repo_name), repo_name, temp_dir
 
@@ -178,7 +180,9 @@ def run_scan(project_name, repo_url, token):
 
         return f"✅ Scan + AI Analysis Complete", trivy_file, ai_file, trivy_report, ai_recommendation, f"📊 Scans: {SCAN_HISTORY[project_name]}"
     except Exception as e:
-        return f"❌ Error: {e}", None, None, "", "", ""
+        # Mask token in error output
+        err = str(e).replace(token, '[MASKED]') if token else str(e)
+        return f"❌ Error: {err}", None, None, "", "", ""
     finally:
         if 'temp_dir' in locals() and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
