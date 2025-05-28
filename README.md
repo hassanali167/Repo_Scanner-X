@@ -48,7 +48,17 @@ pip install -r requirements.txt
 Follow the instructions at:  
 🔗 https://aquasecurity.github.io/trivy/v0.37.0/installation/
 
-### 4. Run the App
+### 4. Create a .env File for API Keys
+
+Create a `.env` file in your project root with the following content:
+
+```
+GROQ_API_KEY=your_real_groq_api_key_here
+```
+
+This keeps your API keys secure and out of the codebase.
+
+### 5. Run the App
 
 ```bash
 python3 app.py
@@ -59,9 +69,6 @@ This will launch a Gradio web interface for interaction.
 ### 🔐 GitHub Token (Optional)
 
 To scan private repositories or avoid GitHub API rate limits, generate a Personal Access Token and paste it in the UI.
-
----
-
 
 ---
 
