@@ -1,4 +1,3 @@
-
 import gradio as gr
 import requests
 import os
@@ -9,13 +8,16 @@ import shutil
 import uuid
 import json
 import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ------------------- CONFIG -------------------
 SCAN_HISTORY = {}
 PROJECT_TITLE = "Repo Scanner-X"
 HEADING = "# Repo Scanner-X"
 HEADING_ALT = "# 🛡️ Git Vulnerability Scanner and AI-based Recommendation System"
-GROQ_API_KEY = "YOur Groq Api"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama3-70b-8192"
 
