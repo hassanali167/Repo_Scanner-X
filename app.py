@@ -21,18 +21,30 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama3-70b-8192"
 
+# ------------------- Input Validation -------------------
+def is_valid_github_url(url):
+    # Accepts https://github.com/user/repo or https://github.com/user/repo.git
+    pattern = r"^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$"
+    return re.match(pattern, url) is not None
+
+def is_valid_token(token):
+    # GitHub tokens are usually 40+ chars, alphanumeric and _
+    if not token:
+        return True
+    return bool(re.match(r"^[A-Za-z0-9_\-]{20,100}$", token))
+
 # ------------------- Repo Utilities -------------------
 def get_repo_name(repo_url):
     match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
     return match.group(1) if match else "scanned_repo"
 
 def verify_github_repo(repo_url, oauth_token=None):
-    if not repo_url.startswith("https://github.com/"):
-        return "❌ Invalid GitHub URL. Use: https://github.com/user/repo"
-
+    if not is_valid_github_url(repo_url):
+        return "❌ Invalid GitHub URL. Use: https://github.com/user/repo or .git"
+    if not is_valid_token(oauth_token):
+        return "❌ Invalid GitHub token format."
     headers = {"Authorization": f"token {oauth_token}"} if oauth_token else {}
     response = requests.get(repo_url.replace("https://github.com/", "https://api.github.com/repos/"), headers=headers)
-
     if response.status_code == 200:
         return "✅ Repository accessible!"
     elif response.status_code == 404:
@@ -44,11 +56,20 @@ def verify_github_repo(repo_url, oauth_token=None):
     return f"⚠️ Unexpected error: {response.status_code}"
 
 def clone_repository(repo_url, token=None):
+    if not is_valid_github_url(repo_url):
+        raise ValueError("Invalid GitHub URL format.")
+    if not is_valid_token(token):
+        raise ValueError("Invalid GitHub token format.")
+    safe_url = repo_url
     if token:
-        repo_url = repo_url.replace("https://", f"https://{token}@")
-
+        # Insert token safely
+        safe_url = repo_url.replace("https://", f"https://{token}@")
     temp_dir = tempfile.mkdtemp()
-    subprocess.run(["git", "clone", repo_url], cwd=temp_dir, capture_output=True, text=True, check=True)
+    try:
+        subprocess.run(["git", "clone", safe_url], cwd=temp_dir, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError(f"Git clone failed: {e.stderr}")
     repo_name = get_repo_name(repo_url)
     return os.path.join(temp_dir, repo_name), repo_name, temp_dir
 
