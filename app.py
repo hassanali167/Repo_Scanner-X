@@ -265,33 +265,33 @@ with gr.Blocks(theme=gr.themes.Soft(), css="""
     """) as ui:
 
     # Theme toggle
-    theme_toggle = gr.Radio(["Light", "Dark"], value="Light", label="Theme", info="Switch between light and dark mode.")
+    theme_toggle = gr.Radio(["Light", "Dark"], value="Light", label="Theme")
 
     gr.Markdown(f"{HEADING}\n{HEADING_ALT}")
 
     with gr.Row():
-        project_name = gr.Textbox(label="Project Name", placeholder="e.g., MyApp-V1", info="A unique name for your scan project. Only letters, numbers, dash, and underscore allowed.")
-        repo_url = gr.Textbox(label="GitHub Repo URL", placeholder="https://github.com/user/repo.git", info="Paste the full GitHub repository URL. Example: https://github.com/user/repo.git")
-    token = gr.Textbox(label="OAuth Token (Optional)", type="password", info="Personal Access Token for private repos or to avoid rate limits. Never shared or stored.")
+        project_name = gr.Textbox(label="Project Name", placeholder="e.g., MyApp-V1")
+        repo_url = gr.Textbox(label="GitHub Repo URL", placeholder="https://github.com/user/repo.git")
+    token = gr.Textbox(label="OAuth Token (Optional)", type="password")
 
-    verify_btn = gr.Button("🔍 Verify Repo", variant="secondary", info="Check if the repository is accessible.")
-    repo_status = gr.Textbox(label="Repository Status", interactive=False, info="Shows the result of repository verification.")
+    verify_btn = gr.Button("🔍 Verify Repo", variant="secondary")
+    repo_status = gr.Textbox(label="Repository Status", interactive=False)
 
-    scan_btn = gr.Button("🛠️ Run Scan + AI Recommendation", variant="primary", info="Run a full vulnerability scan and get AI-powered recommendations.")
-    output_msg = gr.Textbox(label="Status", info="Shows the status of the scan and analysis.")
+    scan_btn = gr.Button("🛠️ Run Scan + AI Recommendation", variant="primary")
+    output_msg = gr.Textbox(label="Status")
 
     gr.Markdown("### 📊 Trivy Scan Output")
-    trivy_text = gr.Textbox(label="Trivy Report (Raw)", lines=10, interactive=False, info="Raw output from Trivy vulnerability scanner.")
+    trivy_text = gr.Textbox(label="Trivy Report (Raw)", lines=10, interactive=False)
 
     gr.Markdown("### 🧠 AI Recommendation")
-    ai_text = gr.Textbox(label="AI Analysis", lines=10, interactive=False, info="AI-generated analysis and recommendations.")
+    ai_text = gr.Textbox(label="AI Analysis", lines=10, interactive=False)
 
     gr.Markdown("### 📁 Download Reports")
     with gr.Row():
-        download_trivy = gr.Button("📄 Download Trivy Report", info="Download the raw Trivy scan report.")
-        download_ai = gr.Button("📄 Download AI Report", info="Download the AI-generated report.")
+        download_trivy = gr.Button("📄 Download Trivy Report")
+        download_ai = gr.Button("📄 Download AI Report")
 
-    scan_stats = gr.Textbox(label="Project Scan Stats", interactive=False, info="Number of scans performed for this project.")
+    scan_stats = gr.Textbox(label="Project Scan Stats", interactive=False)
 
     # Progress indicators using status text updates
     def verify_with_progress(repo_url, token):
