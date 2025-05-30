@@ -1,24 +1,6 @@
-gradio
-requests
-uuid
-dotenv
-
-
-
-
-
-
-
-
-
-
-
-
-sudo apt install wget -y
-wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
-sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
-
-
-
-
-gunicorn # Optional, if hosting the app
+gradio==4.27.0
+requests==2.31.0
+uuid==1.30
+python-dotenv==1.0.1
+gunicorn==21.2.0 # Optional, if hosting the app
+# System-level install commands have been removed. See setup.sh for Trivy installation.
