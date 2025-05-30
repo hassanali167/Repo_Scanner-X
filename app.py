@@ -202,7 +202,7 @@ def run_scan(project_name, repo_url, token):
             shutil.rmtree(temp_dir)
 
 # ------------------- Gradio UI -------------------
-with gr.Blocks(theme=gr.themes.Soft(), css="""
+with gr.Blocks(theme=gr.themes.Monochrome(), css="""
     .gr-button { 
         border-radius: 12px; 
         font-weight: bold; 
@@ -264,9 +264,6 @@ with gr.Blocks(theme=gr.themes.Soft(), css="""
     }
     """) as ui:
 
-    # Theme toggle
-    theme_toggle = gr.Radio(["Light", "Dark"], value="Light", label="Theme")
-
     gr.Markdown(f"{HEADING}\n{HEADING_ALT}")
 
     with gr.Row():
@@ -310,13 +307,5 @@ with gr.Blocks(theme=gr.themes.Soft(), css="""
                    inputs=[project_name, repo_url, token],
                    outputs=[output_msg, download_trivy, download_ai, trivy_text, ai_text, scan_stats],
                    show_progress=True)
-
-    # Theme toggle logic
-    def set_theme(theme):
-        if theme == "Dark":
-            return gr.themes.Monochrome()
-        else:
-            return gr.themes.Soft()
-    theme_toggle.change(set_theme, inputs=theme_toggle, outputs=None)
 
 ui.launch()
