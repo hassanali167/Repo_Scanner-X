@@ -220,8 +220,8 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css="""
     }
     .gr-button:focus,
     .gr-button:active {
-        outline: none; /* Remove the default blue outline/focus */
-        box-shadow: none; /* Remove the blue blur around buttons when focused/active */
+        outline: 2px solid #00bfff !important; /* High-contrast focus for accessibility */
+        box-shadow: 0 0 0 2px #00bfff33 !important;
     }
     .gr-markdown { 
         color: #4A4A4A; 
@@ -249,7 +249,16 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css="""
     .gr-textbox, .gr-button { 
         margin-bottom: 15px;
     }
-
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0,0,0,0);
+        border: 0;
+    }
     .gr-markdown h1 {
         color: #444444;  /* Neutral title color */
         font-size: 28px;
@@ -263,7 +272,8 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css="""
         text-align: center;
     }
     """) as ui:
-
+    # Accessibility: Visually hidden heading for screen readers
+    gr.HTML('<h1 class="visually-hidden">Repo Scanner-X: GitHub Vulnerability Scanner and AI-based Recommendation System</h1>')
     gr.Markdown(f"{HEADING}\n{HEADING_ALT}")
 
     with gr.Row():
