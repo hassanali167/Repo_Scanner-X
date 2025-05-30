@@ -1,3 +1,5 @@
+# SECURITY NOTE: Never log or print sensitive data such as tokens or API keys.
+# Ensure all temp files and directories are securely deleted after use, even on exceptions.
 import gradio as gr
 import requests
 import os
@@ -24,13 +26,19 @@ GROQ_MODEL = "llama3-70b-8192"
 # ------------------- Input Validation -------------------
 def is_valid_github_url(url):
     # Accepts https://github.com/user/repo or https://github.com/user/repo.git
+    # Reject if contains shell metacharacters or whitespace
+    if re.search(r'[\s;|&`$><]', url):
+        return False
     pattern = r"^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$"
     return re.match(pattern, url) is not None
 
 def is_valid_token(token):
     # GitHub tokens are usually 40+ chars, alphanumeric and _
+    # Reject if contains whitespace or shell metacharacters
     if not token:
         return True
+    if re.search(r'[\s;|&`$><]', token):
+        return False
     return bool(re.match(r"^[A-Za-z0-9_\-]{20,100}$", token))
 
 # ------------------- Repo Utilities -------------------
@@ -38,13 +46,17 @@ def get_repo_name(repo_url):
     match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
     return match.group(1) if match else "scanned_repo"
 
+def sanitize_project_name(name):
+    # Allow only alphanumeric, dash, and underscore, and trim whitespace
+    return re.sub(r'[^A-Za-z0-9_\-]', '', name.strip())
+
 def verify_github_repo(repo_url, oauth_token=None):
     if not is_valid_github_url(repo_url):
         return "❌ Invalid GitHub URL. Use: https://github.com/user/repo or .git"
     if not is_valid_token(oauth_token):
         return "❌ Invalid GitHub token format."
     headers = {"Authorization": f"token [MASKED]"} if oauth_token else {}
-    response = requests.get(repo_url.replace("https://github.com/", "https://api.github.com/repos/"), headers=headers)
+    response = requests.get(repo_url.replace("https://github.com/", "https://api.github.com/repos/"), headers=headers, timeout=10)
     if response.status_code == 200:
         return "✅ Repository accessible!"
     elif response.status_code == 404:
@@ -136,17 +148,18 @@ Respond with:
         "temperature": 0.3
     }
 
-    response = requests.post(GROQ_ENDPOINT, headers=headers, json=data)
+    response = requests.post(GROQ_ENDPOINT, headers=headers, json=data, timeout=10)
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
 
 def fetch_repo_metadata(repo_url, token=None):
     headers = {"Authorization": f"token {token}"} if token else {}
     api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
-    return requests.get(api_url, headers=headers).json()
+    return requests.get(api_url, headers=headers, timeout=10).json()
 
 # ------------------- Main Function -------------------
 def run_scan(project_name, repo_url, token):
+    project_name = sanitize_project_name(project_name)
     status = verify_github_repo(repo_url, token)
     if "❌" in status or "⛔" in status or "🔐" in status:
         return status, None, None, "", "", ""
@@ -184,6 +197,7 @@ def run_scan(project_name, repo_url, token):
         err = str(e).replace(token, '[MASKED]') if token else str(e)
         return f"❌ Error: {err}", None, None, "", "", ""
     finally:
+        # Securely delete temp_dir after use, even on exceptions
         if 'temp_dir' in locals() and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
