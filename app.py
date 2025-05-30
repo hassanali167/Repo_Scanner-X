@@ -11,6 +11,7 @@ import uuid
 import json
 import datetime
 from dotenv import load_dotenv
+from typing import Tuple, List, Dict, Optional
 
 load_dotenv()
 
@@ -24,7 +25,7 @@ GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama3-70b-8192"
 
 # ------------------- Input Validation -------------------
-def is_valid_github_url(url):
+def is_valid_github_url(url: str) -> bool:
     # Accepts https://github.com/user/repo or https://github.com/user/repo.git
     # Reject if contains shell metacharacters or whitespace
     if re.search(r'[\s;|&`$><]', url):
@@ -32,7 +33,7 @@ def is_valid_github_url(url):
     pattern = r"^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$"
     return re.match(pattern, url) is not None
 
-def is_valid_token(token):
+def is_valid_token(token: str) -> bool:
     # GitHub tokens are usually 40+ chars, alphanumeric and _
     # Reject if contains whitespace or shell metacharacters
     if not token:
@@ -42,15 +43,15 @@ def is_valid_token(token):
     return bool(re.match(r"^[A-Za-z0-9_\-]{20,100}$", token))
 
 # ------------------- Repo Utilities -------------------
-def get_repo_name(repo_url):
+def get_repo_name(repo_url: str) -> str:
     match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
     return match.group(1) if match else "scanned_repo"
 
-def sanitize_project_name(name):
+def sanitize_project_name(name: str) -> str:
     # Allow only alphanumeric, dash, and underscore, and trim whitespace
     return re.sub(r'[^A-Za-z0-9_\-]', '', name.strip())
 
-def verify_github_repo(repo_url, oauth_token=None):
+def verify_github_repo(repo_url: str, oauth_token: str = None) -> str:
     if not is_valid_github_url(repo_url):
         return "❌ Invalid GitHub URL. Use: https://github.com/user/repo or .git"
     if not is_valid_token(oauth_token):
@@ -67,7 +68,7 @@ def verify_github_repo(repo_url, oauth_token=None):
         return "🔐 Unauthorized: Invalid token?"
     return f"⚠️ Unexpected error: {response.status_code}"
 
-def clone_repository(repo_url, token=None):
+def clone_repository(repo_url: str, token: Optional[str] = None) -> Tuple[str, str, str]:
     if not is_valid_github_url(repo_url):
         raise ValueError("Invalid GitHub URL format.")
     if not is_valid_token(token):
@@ -88,7 +89,7 @@ def clone_repository(repo_url, token=None):
     return os.path.join(temp_dir, repo_name), repo_name, temp_dir
 
 # ------------------- Trivy Scanner -------------------
-def scan_with_trivy(repo_path):
+def scan_with_trivy(repo_path: str) -> str:
     cmd = [
         "trivy", "fs",
         "--scanners", "vuln,secret,config,license",
@@ -101,17 +102,29 @@ def scan_with_trivy(repo_path):
         raise RuntimeError(result.stderr)
     return result.stdout
 
-def extract_vulnerable_files(scan_output):
+def extract_vulnerable_files(scan_output: str) -> List[str]:
     return sorted(set(re.findall(r"(/.*?):", scan_output)))
 
-def save_report(repo_name, content, suffix):
+def save_report(repo_name: str, content: str, suffix: str) -> str:
     filename = f"{repo_name}_{uuid.uuid4().hex[:6]}_{suffix}"
     with open(filename, "w") as f:
         f.write(content)
     return filename
 
+def summarize_findings(scan_output: str) -> str:
+    # Simple summary: count vulnerabilities, secrets, misconfigs, licenses
+    vuln_count = scan_output.lower().count("vulnerability")
+    secret_count = scan_output.lower().count("secret")
+    misconfig_count = scan_output.lower().count("misconfiguration")
+    license_count = scan_output.lower().count("license")
+    return (f"**Summary:**\n"
+            f"- Vulnerabilities: {vuln_count}\n"
+            f"- Secrets: {secret_count}\n"
+            f"- Misconfigurations: {misconfig_count}\n"
+            f"- License Issues: {license_count}\n")
+
 # ------------------- AI ANALYSIS -------------------
-def analyze_with_ai(scan_report, repo_url, repo_name, repo_meta):
+def analyze_with_ai(scan_report: str, repo_url: str, repo_name: str, repo_meta: Dict) -> str:
     vulnerable_files = extract_vulnerable_files(scan_report)
     file_list = "\n".join(f"- `{file}`" for file in vulnerable_files)
 
@@ -136,7 +149,7 @@ Skip introductions like \"As an AI expert...\" and jump straight to the point.
 {scan_report}
 
 Respond with:
-1. ⚡ Top 3 Critical Vulnerabilities
+1. ⚡ Top 3 Critical Vulnerabilities (include CVE links if possible)
 2. 🛠️ Remediation Steps
 3. 🧠 Known Exploits / Attack Techniques
 """
@@ -152,13 +165,13 @@ Respond with:
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
 
-def fetch_repo_metadata(repo_url, token=None):
+def fetch_repo_metadata(repo_url: str, token: Optional[str] = None) -> Dict:
     headers = {"Authorization": f"token {token}"} if token else {}
     api_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
     return requests.get(api_url, headers=headers, timeout=10).json()
 
 # ------------------- Main Function -------------------
-def run_scan(project_name, repo_url, token):
+def run_scan(project_name: str, repo_url: str, token: str) -> Tuple[str, Optional[str], Optional[str], str, str, str]:
     project_name = sanitize_project_name(project_name)
     status = verify_github_repo(repo_url, token)
     if "❌" in status or "⛔" in status or "🔐" in status:
@@ -169,6 +182,7 @@ def run_scan(project_name, repo_url, token):
         repo_path, repo_name, temp_dir = clone_repository(repo_url, token)
         scan_data = scan_with_trivy(repo_path)
 
+        summary = summarize_findings(scan_data)
         header = (
             f"\n\n✨ GitHub Repository Metadata:\n"
             f"- Repo Name: {repo_name}\n"
@@ -182,9 +196,9 @@ def run_scan(project_name, repo_url, token):
             f"- Scan Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         )
 
-        trivy_report = header + scan_data
+        trivy_report = summary + header + scan_data
         ai_recommendation = analyze_with_ai(scan_data, repo_url, repo_name, repo_meta)
-        ai_report = header + ai_recommendation
+        ai_report = summary + header + ai_recommendation
 
         trivy_file = save_report(repo_name, trivy_report, "trivy.txt")
         ai_file = save_report(repo_name, ai_report, "ai.md")
