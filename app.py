@@ -264,36 +264,59 @@ with gr.Blocks(theme=gr.themes.Soft(), css="""
     }
     """) as ui:
 
+    # Theme toggle
+    theme_toggle = gr.Radio(["Light", "Dark"], value="Light", label="Theme", info="Switch between light and dark mode.")
+
     gr.Markdown(f"{HEADING}\n{HEADING_ALT}")
 
     with gr.Row():
-        project_name = gr.Textbox(label="Project Name", placeholder="e.g., MyApp-V1")
-        repo_url = gr.Textbox(label="GitHub Repo URL", placeholder="https://github.com/user/repo.git")
-    token = gr.Textbox(label="OAuth Token (Optional)", type="password")
+        project_name = gr.Textbox(label="Project Name", placeholder="e.g., MyApp-V1", info="A unique name for your scan project. Only letters, numbers, dash, and underscore allowed.")
+        repo_url = gr.Textbox(label="GitHub Repo URL", placeholder="https://github.com/user/repo.git", info="Paste the full GitHub repository URL. Example: https://github.com/user/repo.git")
+    token = gr.Textbox(label="OAuth Token (Optional)", type="password", info="Personal Access Token for private repos or to avoid rate limits. Never shared or stored.")
 
-    verify_btn = gr.Button("🔍 Verify Repo", variant="secondary")
-    repo_status = gr.Textbox(label="Repository Status", interactive=False)
+    verify_btn = gr.Button("🔍 Verify Repo", variant="secondary", info="Check if the repository is accessible.")
+    repo_status = gr.Textbox(label="Repository Status", interactive=False, info="Shows the result of repository verification.")
 
-    scan_btn = gr.Button("🛠️ Run Scan + AI Recommendation", variant="primary")
-    output_msg = gr.Textbox(label="Status")
+    scan_btn = gr.Button("🛠️ Run Scan + AI Recommendation", variant="primary", info="Run a full vulnerability scan and get AI-powered recommendations.")
+    output_msg = gr.Textbox(label="Status", info="Shows the status of the scan and analysis.")
 
     gr.Markdown("### 📊 Trivy Scan Output")
-    trivy_text = gr.Textbox(label="Trivy Report (Raw)", lines=10, interactive=False)
+    trivy_text = gr.Textbox(label="Trivy Report (Raw)", lines=10, interactive=False, info="Raw output from Trivy vulnerability scanner.")
 
     gr.Markdown("### 🧠 AI Recommendation")
-    ai_text = gr.Textbox(label="AI Analysis", lines=10, interactive=False)
+    ai_text = gr.Textbox(label="AI Analysis", lines=10, interactive=False, info="AI-generated analysis and recommendations.")
 
     gr.Markdown("### 📁 Download Reports")
     with gr.Row():
-        download_trivy = gr.Button("📄 Download Trivy Report")
-        download_ai = gr.Button("📄 Download AI Report")
+        download_trivy = gr.Button("📄 Download Trivy Report", info="Download the raw Trivy scan report.")
+        download_ai = gr.Button("📄 Download AI Report", info="Download the AI-generated report.")
 
-    scan_stats = gr.Textbox(label="Project Scan Stats", interactive=False)
+    scan_stats = gr.Textbox(label="Project Scan Stats", interactive=False, info="Number of scans performed for this project.")
 
-    verify_btn.click(verify_github_repo, inputs=[repo_url, token], outputs=repo_status)
+    # Progress indicators using status text updates
+    def verify_with_progress(repo_url, token):
+        yield "⏳ Verifying repository..."
+        result = verify_github_repo(repo_url, token)
+        yield result
 
-    scan_btn.click(run_scan,
+    def scan_with_progress(project_name, repo_url, token):
+        yield "⏳ Running scan and AI analysis...", None, None, "", "", ""
+        result = run_scan(project_name, repo_url, token)
+        yield result
+
+    verify_btn.click(verify_with_progress, inputs=[repo_url, token], outputs=repo_status, show_progress=True)
+
+    scan_btn.click(scan_with_progress,
                    inputs=[project_name, repo_url, token],
-                   outputs=[output_msg, download_trivy, download_ai, trivy_text, ai_text, scan_stats])
+                   outputs=[output_msg, download_trivy, download_ai, trivy_text, ai_text, scan_stats],
+                   show_progress=True)
+
+    # Theme toggle logic
+    def set_theme(theme):
+        if theme == "Dark":
+            return gr.themes.Monochrome()
+        else:
+            return gr.themes.Soft()
+    theme_toggle.change(set_theme, inputs=theme_toggle, outputs=None)
 
 ui.launch()
