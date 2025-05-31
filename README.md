@@ -71,7 +71,7 @@ This keeps your API keys secure and out of the codebase.
 ### 5. Run the App
 
 ```bash
-python3 app.py
+python3 main.py
 ```
 
 This will launch a Gradio web interface for interaction.
