@@ -2,18 +2,34 @@
 # Performs Trivy scans and AI-based vulnerability analysis.
 # Generates and saves Trivy and AI recommendation reports.
 
-
 import subprocess
 import requests
 import datetime
 import shutil
-import os  # Added import
+import os
+import logging
 from typing import Tuple, Dict, Optional
 from config import GROQ_API_KEY, GROQ_ENDPOINT, GROQ_MODEL, SCAN_HISTORY
 from utils import clone_repository, extract_vulnerable_files, save_report, fetch_repo_metadata, get_repo_name
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def check_trivy_installation() -> bool:
+    """Check if Trivy is installed and accessible."""
+    try:
+        subprocess.run(["trivy", "--version"], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
 def scan_with_trivy(repo_path: str) -> str:
-    print(f"Running Trivy scan on: {repo_path}")  # Debug
+    """Run Trivy scan on the repository."""
+    if not check_trivy_installation():
+        raise RuntimeError("Trivy is not installed. Please install it first using setup.sh")
+    
+    logger.info(f"Running Trivy scan on: {repo_path}")
     cmd = [
         "trivy", "fs",
         "--scanners", "vuln,secret,config,license",
@@ -22,16 +38,19 @@ def scan_with_trivy(repo_path: str) -> str:
         repo_path
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        print(f"Trivy return code: {result.returncode}")  # Debug
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5-minute timeout
+        logger.info(f"Trivy return code: {result.returncode}")
         if result.returncode not in [0, 5]:
-            raise RuntimeError(result.stderr)
+            raise RuntimeError(f"Trivy scan failed: {result.stderr}")
         return result.stdout
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Trivy scan timed out after 5 minutes")
     except Exception as e:
-        print(f"Trivy scan failed: {str(e)}")  # Debug
+        logger.error(f"Trivy scan failed: {str(e)}")
         raise
 
 def summarize_findings(scan_output: str) -> str:
+    """Summarize the scan findings."""
     vuln_count = scan_output.lower().count("vulnerability")
     secret_count = scan_output.lower().count("secret")
     misconfig_count = scan_output.lower().count("misconfiguration")
@@ -41,13 +60,17 @@ def summarize_findings(scan_output: str) -> str:
                f"- Secrets: {secret_count}\n"
                f"- Misconfigurations: {misconfig_count}\n"
                f"- License Issues: {license_count}\n")
-    print(f"Scan summary: {summary}")  # Debug
+    logger.info(f"Scan summary: {summary}")
     return summary
 
 def analyze_with_ai(scan_report: str, repo_url: str, repo_name: str, repo_meta: Dict) -> str:
+    """Analyze scan results using AI."""
+    if not GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY is not set in environment variables")
+    
     vulnerable_files = extract_vulnerable_files(scan_report)
     file_list = "\n".join(f"- `{file}`" for file in vulnerable_files)
-    print(f"Vulnerable files detected: {file_list}")  # Debug
+    logger.info(f"Vulnerable files detected: {file_list}")
 
     prompt = f"""
 You are a cybersecurity assistant. Read this vulnerability scan and respond **professionally**.
@@ -82,29 +105,40 @@ Respond with:
         "temperature": 0.3
     }
 
-    print("Sending request to Groq API...")  # Debug
-    response = requests.post(GROQ_ENDPOINT, headers=headers, json=data, timeout=10)
-    print(f"Groq API response status: {response.status_code}")  # Debug
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    try:
+        logger.info("Sending request to Groq API...")
+        response = requests.post(GROQ_ENDPOINT, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        logger.info(f"Groq API response status: {response.status_code}")
+        return response.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.Timeout:
+        raise RuntimeError("AI analysis timed out after 30 seconds")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"AI analysis failed: {str(e)}")
+        raise RuntimeError(f"AI analysis failed: {str(e)}")
 
 def run_scan(project_name: str, repo_url: str, token: str) -> Tuple[str, Optional[str], Optional[str], str, str, str]:
-    from utils import sanitize_project_name, verify_github_repo  # Moved here to avoid circular import
-    print(f"Starting scan for project: {project_name}, repo: {repo_url}")  # Debug
+    """Run the complete scanning process."""
+    from utils import sanitize_project_name, verify_github_repo
+    
+    logger.info(f"Starting scan for project: {project_name}, repo: {repo_url}")
     project_name = sanitize_project_name(project_name)
     status = verify_github_repo(repo_url, token)
-    print(f"Repo verification status: {status}")  # Debug
+    logger.info(f"Repo verification status: {status}")
+    
     if "❌" in status or "⛔" in status or "🔐" in status:
         return status, None, None, "", "", ""
 
+    temp_dir = None
     try:
         repo_meta = fetch_repo_metadata(repo_url, token)
-        print(f"Repo metadata: {repo_meta}")  # Debug
+        logger.info(f"Repo metadata fetched successfully")
         repo_path, repo_name, temp_dir = clone_repository(repo_url, token)
-        print(f"Cloned repo to: {repo_path}")  # Debug
+        logger.info(f"Cloned repo to: {repo_path}")
+        
         scan_data = scan_with_trivy(repo_path)
-
         summary = summarize_findings(scan_data)
+        
         header = (
             f"\n\n✨ GitHub Repository Metadata:\n"
             f"- Repo Name: {repo_name}\n"
@@ -126,14 +160,17 @@ def run_scan(project_name: str, repo_url: str, token: str) -> Tuple[str, Optiona
         ai_file = save_report(repo_name, ai_report, "ai.md")
 
         SCAN_HISTORY[project_name] = SCAN_HISTORY.get(project_name, 0) + 1
-        print(f"Scan completed, reports saved: {trivy_file}, {ai_file}")  # Debug
+        logger.info(f"Scan completed, reports saved: {trivy_file}, {ai_file}")
 
         return f"✅ Scan + AI Analysis Complete", trivy_file, ai_file, trivy_report, ai_recommendation, f"📊 Scans: {SCAN_HISTORY[project_name]}"
     except Exception as e:
         err = str(e).replace(token, '[MASKED]') if token else str(e)
-        print(f"Scan error: {err}")  # Debug
+        logger.error(f"Scan error: {err}")
         return f"❌ Error: {err}", None, None, "", "", ""
     finally:
-        if 'temp_dir' in locals() and os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-            print(f"Cleaned up temp directory: {temp_dir}")  # Debug
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+                logger.info(f"Cleaned up temp directory: {temp_dir}")
+            except Exception as e:
+                logger.error(f"Failed to clean up temp directory: {str(e)}")
